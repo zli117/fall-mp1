@@ -30,6 +30,7 @@
 
     EXPLOSION = 64
     CROSSHAIR = 42
+    SPACE     = 32
 
 
 # Data shared between this file and rtc.c helper functions
@@ -122,7 +123,7 @@ mp1_ioctl:
         movl    8(%esp), %eax
         cmpl    $5, %eax
         jae     on_error
-        call    *jump_table(, %eax, 4)
+        jmp     *jump_table(, %eax, 4)
         ret
 
 
@@ -195,7 +196,10 @@ draw_xhair:
 mp1_ioctl_startgame:
         pushl   %ebp
         movl    %esp, %ebp
-
+        movl    $40, %eax
+        movl    %eax, crosshairs_x
+        movl    $12, %eax
+        movl    %eax, crosshairs_y
         leave
         ret
 
@@ -211,7 +215,42 @@ mp1_ioctl_addmissile:
 mp1_ioctl_movexhairs:
         pushl   %ebp
         movl    %esp, %ebp
+        movl    crosshairs_x, %ecx
+        movl    crosshairs_y, %edx
+        pushl   $SPACE
+        pushl   %edx
+        pushl   %ecx
+        call    mp1_draw
+        addl    $12, %esp
+        movl    8(%esp), %eax
+        movl    crosshairs_x, %ecx
+        movl    crosshairs_y, %edx
+        addw    %ax, %cx
+        shrl    $16, %eax
+        addw    %ax, %dx
 
+        # boundry checkings
+        cmpw    $0, %cx
+        jg      mp1_ioctl_movexhairs_check_x_up
+        movl    $0, %ecx
+        jmp     mp1_ioctl_movexhairs_check_y_low
+mp1_ioctl_movexhairs_check_x_up:
+        cmpl    $80, %ecx
+        jl      mp1_ioctl_movexhairs_check_y_low
+        movl    $79, %ecx
+mp1_ioctl_movexhairs_check_y_low:
+        cmpw    $0, %dx
+        jg      mp1_ioctl_movexhairs_check_y_up
+        movl    $0, %edx
+        jmp     mp1_ioctl_movexhairs_check_done
+mp1_ioctl_movexhairs_check_y_up:
+        cmpl    $24, %edx
+        jl      mp1_ioctl_movexhairs_check_done
+        movl    $23, %edx
+mp1_ioctl_movexhairs_check_done:
+        movl    %ecx, crosshairs_x
+        movl    %edx, crosshairs_y
+        call    draw_xhair
         leave
         ret
 
