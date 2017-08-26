@@ -29,6 +29,7 @@
     # Character to draw for an explosion - '@'
 
     EXPLOSION = 64
+    CROSSHAIR = 42
 
 
 # Data shared between this file and rtc.c helper functions
@@ -180,7 +181,13 @@ draw_bases_done1:
 draw_xhair:
         pushl   %ebp
         movl    %esp, %ebp
-
+        movl    $CROSSHAIR, %eax
+        pushl   %eax
+        movl    crosshairs_y, %eax
+        pushl   %eax
+        movl    crosshairs_x, %eax
+        pushl   %eax
+        call    mp1_draw
         leave
         ret
 
