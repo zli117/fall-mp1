@@ -8,8 +8,8 @@
         pushl   %edx
 
 #define CALLER_POP                   \
-        popl    %ecx;                \
-        popl    %edx
+        popl    %edx;                \
+        popl    %ecx
 
 .data
 
@@ -25,6 +25,7 @@
     DEST_Y    = 24
     EXPLODED  = 28
     C         = 32
+    SIZE      = 36
 
     # Character to draw for an explosion - '@'
 
@@ -41,12 +42,13 @@
 mp1_missile_list: .long 0x0   # Head of list pointer
 base_alive:       .long 0x0   # Array of 3 bytes, plus a padding byte
 mp1_score:        .long 0x0   # Player's current score
+mp1_status:       .long 0x0
 
 
 # Data private to this  file
 
-base_pic:      .string "/^^^\\"    # Picture of a live base
 dead_base_pic: .string "xxxxx" # Picture of a dead base
+base_pic:      .string "/^^^\\"    # Picture of a live base
 crosshairs_x:  .long 0x0   # X-position of the crosshairs
 crosshairs_y:  .long 0x0   # Y-position of the crosshairs
 
@@ -133,7 +135,106 @@ mp1_ioctl:
 update_missiles:
         pushl   %ebp
         movl    %esp, %ebp
+        movl    $mp1_missile_list, %eax     # struct missile**
+update_missiles_loop1:
+        cmpl    $0, %eax
+        jz      update_missiles_done1
+        cmpl    $0, (%eax)
+        jz      update_missiles_done1
+        movl    (%eax), %ecx
+        CALLER_SAVE
+        xorl    %edx, %edx
+        movb    $SPACE, %dl
+        pushl   %edx
+        xorl    %edx, %edx
+        movw    Y + 2(%ecx), %dx
+        pushl   %edx
+        movw    X + 2(%ecx), %dx
+        pushl   %edx
+        call    mp1_draw
+        addl    $12, %esp
+        CALLER_POP
+        popl    %eax
+        movl    EXPLODED(%ecx), %edx
+        cmpl    $0, %edx
+        jnz     update_missiles_exploded
+        movl    X(%ecx), %edx
+        addl    VX(%ecx), %edx
+        movl    %edx, X(%ecx)
+        movl    Y(%ecx), %edx
+        addl    VY(%ecx), %edx
+        movl    %edx, Y(%ecx)
+        # check out of screen. y first
+        shrl    $16, %edx
+        cmpw    $25, %dx
+        jae     update_missiles_delete
+        movl    X(%ecx), %edx
+        shrl    $16, %edx
+        cmpw    $80, %dx
+        jae     update_missiles_delete
+        # check on destination. x first
+        andl    $0xffff, %edx
+        cmpl    DEST_X(%ecx), %edx
+        jnz     update_missiles_redraw
+        movl    Y(%ecx), %edx
+        shrl    $16, %edx
+        andl    $0xffff, %edx
+        cmpl    DEST_Y(%ecx), %edx
+        jnz     update_missiles_redraw
+        CALLER_SAVE
+        pushl   (%eax)
+        call    missile_explode
+        addl    $4, %esp
+        cmpl    $0, %eax
+        jz      update_missiles_nochange
+        call    mp1_notify_user
+update_missiles_nochange:
+        CALLER_POP
+        popl    %eax
+update_missiles_exploded:
+        movb    $EXPLOSION, C(%ecx)
+        decl    %edx
+        cmpl    $0, %edx
+        jz      update_missiles_delete
+        movl    %edx, EXPLODED(%ecx)
+update_missiles_redraw:
+        CALLER_SAVE
+        xorl    %edx, %edx
+        movb    C(%ecx), %dl
+        pushl   %edx
+        xorl    %edx, %edx
+        movw    Y + 2(%ecx), %dx
+        pushl   %edx
+        movw    X + 2(%ecx), %dx
+        pushl   %edx
+        call    mp1_draw
+        addl    $12, %esp
+        CALLER_POP
+        popl    %eax
+        jmp     update_missiles_continue
+update_missiles_delete:
+        pushl   %eax
+        pushl   %eax
+        call    remove_missile
+        addl    $4, %esp
+        popl    %eax
+update_missiles_continue:
+        movl    (%eax), %eax
+        jmp     update_missiles_loop1
+update_missiles_done1:
+        leave
+        ret
 
+# void remove_missile(struct missile** missle)
+remove_missile:
+        pushl   %ebp
+        movl    %esp, %ebp
+        movl    8(%ebp), %eax
+        movl    (%eax), %ecx
+        movl    (%ecx), %edx
+        movl    %edx, (%eax)
+        pushl   %ecx
+        call    mp1_free
         leave
         ret
 
@@ -150,7 +251,7 @@ draw_bases_loop1:
         xorl    %ebx, %ebx
         movb    base_alive(%eax), %bl
         imull   $6, %ebx
-        addl    $base_pic, %ebx
+        addl    $dead_base_pic, %ebx
 draw_bases_loop2:
         cmpl    $5, %ecx
         jae     draw_bases_done2
@@ -166,8 +267,8 @@ draw_bases_loop2:
         pushl   %edx
         call    mp1_draw
         addl    $12, %esp
-        popl    %eax
         CALLER_POP
+        popl    %eax
         incl    %ecx
         jmp     draw_bases_loop2
 draw_bases_done2:
@@ -200,6 +301,8 @@ mp1_ioctl_startgame:
         movl    %eax, crosshairs_x
         movl    $12, %eax
         movl    %eax, crosshairs_y
+        movl    $0x01010101, %eax
+        movl    %eax, base_alive
         leave
         ret
 
@@ -207,7 +310,27 @@ mp1_ioctl_startgame:
 mp1_ioctl_addmissile:
         pushl   %ebp
         movl    %esp, %ebp
-
+        # copy from user
+        pushl   $SIZE
+        call    mp1_malloc
+        addl    $4, %esp
+        cmpl    $0, %eax        # return of malloc
+        jz      on_error_leave
+        pushl   %eax
+        pushl   $SIZE
+        movl    8(%ebp), %ecx
+        pushl   %ecx
+        pushl   %eax
+        call    mp1_copy_from_user
+        addl    $12, %esp
+        cmpl    $0, %eax
+        popl    %eax
+        jnz     on_error_free
+        # insert the struct
+        movl    mp1_missile_list, %ecx
+        movl    %ecx, NEXT(%eax)
+        movl    %eax, mp1_missile_list
+        xorl    %eax, %eax
         leave
         ret
 
@@ -251,6 +374,7 @@ mp1_ioctl_movexhairs_check_done:
         movl    %ecx, crosshairs_x
         movl    %edx, crosshairs_y
         call    draw_xhair
+        xorl    %eax, %eax
         leave
         ret
 
@@ -258,7 +382,39 @@ mp1_ioctl_movexhairs_check_done:
 mp1_ioctl_getstatus:
         pushl   %ebp
         movl    %esp, %ebp
-
+        movl    mp1_score, %eax
+        andl    $0xffff, %eax
+        movb    base_alive, %cl
+        cmpb    $0, %cl
+        jz      mp1_ioctl_getstatus_1
+        xorl    %edx, %edx
+        movl    $1, %edx
+        shll    $16, %edx
+        orl     %edx, %eax
+mp1_ioctl_getstatus_1:
+        movb    base_alive + 1, %cl
+        cmpb    $0, %cl
+        jz      mp1_ioctl_getstatus_2
+        xorl    %edx, %edx
+        movl    $1, %edx
+        shll    $17, %edx
+        orl     %edx, %eax
+mp1_ioctl_getstatus_2:
+        movb    base_alive + 2, %cl
+        cmpb    $0, %cl
+        jz      mp1_ioctl_getstatus_3
+        xorl    %edx, %edx
+        movl    $1, %edx
+        shll    $18, %edx
+        orl     %edx, %eax
+mp1_ioctl_getstatus_3:
+        movl    %eax, mp1_status
+        pushl   $4
+        pushl   $mp1_status
+        pushl   8(%ebp)
+        call    mp1_copy_to_user
+        cmpl    $0, %eax
+        jnz     on_error_leave
         leave
         ret
 
@@ -271,6 +427,11 @@ mp1_ioctl_endgame:
         ret
 
 # ----------------- Helpers ---------------
+on_error_free:
+        pushl   %eax
+        call    mp1_free
+on_error_leave:
+        leave
 on_error:
         movl    $-1, %eax
         ret

@@ -57,7 +57,7 @@ int missile_explode(struct missile *m){
             int dx, dy;
             dx = (m->x>>16) - (i->x>>16);
             dy = (m->y>>16) - (i->y>>16);
-            if(dx >= -2 && dx <= 2 && dy >= -1 && dy <= 1 &&
+            if(dx >= -5 && dx <= 5 && dy >= -5 && dy <= 5 &&
                i->exploded == 0 && i->c == 'e' && m->c == '*'){
                 mp1_score++;
                 exploded++;

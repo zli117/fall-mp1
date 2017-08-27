@@ -24,8 +24,8 @@
 
 struct missile {
     struct missile* next;   /* pointer to next missile in linked list */
-    int x, y;           /* x,y position on screen                 */
-    int vx, vy;         /* x,y velocity vector                    */
+    int x, y;               /* x,y position on screen                 */
+    int vx, vy;             /* x,y velocity vector                    */
     int dest_x, dest_y;     /* location at which the missile explodes */
     int exploded;           /* explosion duration counter             */
     char c;                 /* character to draw for this missile     */
