@@ -191,6 +191,7 @@ update_missiles_loop1:
 update_missiles_nochange:
         CALLER_POP
         popl    %eax
+        movl    EXPLODED(%ecx), %edx
 update_missiles_exploded:
         movb    $EXPLOSION, C(%ecx)
         decl    %edx
