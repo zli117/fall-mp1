@@ -422,7 +422,13 @@ mp1_ioctl_getstatus_3:
 mp1_ioctl_endgame:
         pushl   %ebp
         movl    %esp, %ebp
-
+        pushl   $mp1_missile_list
+mp1_ioctl_endgame_loop:
+        cmpl    $0, mp1_missile_list
+        jz      mp1_ioctl_endgame_end
+        call    remove_missile
+        jmp     mp1_ioctl_endgame_loop
+mp1_ioctl_endgame_end:
         leave
         ret
 
